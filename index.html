@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F172A">
 <meta name="description" content="A 3D reaction time test built with vanilla JavaScript and Three.js.">
-<title>Reflex: 3D reaction timer</title>
+<title>Reflex: 3D Reaction Timer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -44,6 +44,9 @@
     -webkit-font-smoothing: antialiased;
     font-feature-settings: "cv11", "ss01";
   }
+  .brand h1, .status, .btn, .kicker, .headline, .panel-head h2,
+  .best-label, .figure dt, .steps strong, .stage-bar span { text-transform: capitalize; }
+  .unit, .keep-case { text-transform: none; }
 
   /* State tokens: one attribute drives every colour in the UI */
   body[data-state="idle"]        { --state: #94A3B8; --state-rgb: 148, 163, 184; --btn-bg: var(--ready); }
@@ -102,14 +105,22 @@
   @media (max-width: 920px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 
   /* Stage: the one bold element */
+  .stage-bar {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    margin-bottom: 10px;
+    font-size: 0.8125rem; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
   .stage {
     position: relative;
-    height: clamp(360px, 64vh, 620px);
-    border-radius: 22px;
+    isolation: isolate;
+    height: clamp(340px, 60vh, 580px);
+    border-radius: 24px;
     overflow: hidden;
+    clip-path: inset(0 round 24px);
     background:
       radial-gradient(ellipse 70% 60% at 50% 38%, #213049 0%, #172238 45%, #111a2d 100%);
-    border: 1px solid rgba(var(--state-rgb), 0.38);
+    border: 2px solid rgba(var(--state-rgb), 0.5);
     box-shadow: 0 30px 80px -40px rgba(var(--state-rgb), 0.55);
     cursor: pointer;
     user-select: none; -webkit-user-select: none;
@@ -118,7 +129,9 @@
     transition: border-color 0.35s ease, box-shadow 0.35s ease;
     outline: none;
   }
+  .stage:hover { border-color: rgba(var(--state-rgb), 0.75); }
   .stage:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+  .stage canvas, .overlay { border-radius: 22px; }
   .stage::after {
     content: "";
     position: absolute; inset: 0;
@@ -146,18 +159,10 @@
   body.no-webgl .fallback-orb { display: block; }
   body.no-webgl[data-state="ready"] .fallback-orb { transition: none; transform: translate(-50%, -50%) scale(1.15); }
 
-  .hud {
-    position: absolute; top: 14px; left: 16px; right: 16px;
-    display: flex; justify-content: space-between; gap: 12px;
-    font-size: 0.8125rem; color: var(--muted);
-    font-variant-numeric: tabular-nums;
-    pointer-events: none;
-    z-index: 2;
-  }
-  .hud span { background: rgba(15, 23, 42, 0.6); border: 1px solid var(--line); padding: 4px 10px; border-radius: 8px; backdrop-filter: blur(6px); }
+  .stage-bar span { background: var(--surface); border: 1px solid var(--line); padding: 4px 10px; border-radius: 8px; }
 
   .notice {
-    position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
     max-width: calc(100% - 32px);
     font-size: 0.8125rem; color: var(--text);
     background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.4);
@@ -256,6 +261,7 @@
 
   .figures { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
   .figure { padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  .figure:nth-last-child(-n+2) { border-bottom: 0; }
   .figure:nth-child(odd) { border-right: 1px solid var(--line); }
   .figure dt { font-size: 0.8125rem; color: var(--muted); }
   .figure dd { margin: 2px 0 0; font-size: 1.375rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
@@ -264,27 +270,6 @@
   .figure.errors dd.has-errors { color: var(--error); }
   .flash { animation: flash 0.7s ease-out; }
   @keyframes flash { from { background: rgba(var(--flash-rgb, 59, 130, 246), 0.2); } to { background: transparent; } }
-
-  .history { padding: 18px 22px 22px; }
-  .history-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
-  .history-head h3 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
-  .history-head span { font-size: 0.8125rem; color: var(--muted); }
-  .chart { position: relative; height: 128px; border-bottom: 1px solid var(--line); }
-  .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 6px; }
-  .bar {
-    flex: 1 1 0; min-width: 0;
-    background: rgba(59, 130, 246, 0.42);
-    border-radius: 5px 5px 1px 1px;
-    transform-origin: bottom;
-  }
-  .bar.latest { background: var(--result); animation: grow 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
-  .bar.best { background: var(--ready); }
-  @keyframes grow { from { transform: scaleY(0); } }
-  .refline { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(148, 163, 184, 0.45); pointer-events: none; }
-  .refline span { position: absolute; right: 0; bottom: 3px; font-size: 0.75rem; color: var(--muted); background: var(--surface); padding-left: 6px; }
-  .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 0.875rem; padding: 0 12px; }
-  .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 0.8125rem; color: var(--muted); flex-wrap: wrap; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 
   .footer { color: var(--muted); font-size: 0.8125rem; max-width: 80ch; }
   .footer p { margin: 0; }
@@ -313,13 +298,13 @@
 
   <main class="layout">
     <section aria-label="Reaction test">
+      <div class="stage-bar" aria-hidden="true">
+        <span id="attemptChip">Attempt 1</span>
+        <span id="perfChip">Starting renderer</span>
+      </div>
       <div id="stage" class="stage" tabindex="0" role="button" aria-describedby="headline sub">
         <canvas id="scene" aria-hidden="true"></canvas>
         <div class="fallback-orb" aria-hidden="true"></div>
-        <div class="hud" aria-hidden="true">
-          <span id="attemptChip">Attempt 1</span>
-          <span id="perfChip">Starting renderer</span>
-        </div>
         <div id="notice" class="notice" role="status" hidden></div>
         <div id="overlay" class="overlay">
           <p id="kicker" class="kicker"></p>
@@ -365,27 +350,11 @@
         <div class="figure" id="figWorst"><dt>Slowest</dt><dd id="statWorst">&ndash;</dd></div>
       </dl>
 
-      <div class="history">
-        <div class="history-head">
-          <h3>Recent attempts</h3>
-          <span id="historyMeta">Last 12</span>
-        </div>
-        <div class="chart" id="chart" role="img" aria-label="No attempts recorded yet">
-          <div class="bars" id="bars"></div>
-          <div class="refline" id="refline"><span>Typical 250 ms</span></div>
-          <div class="chart-empty" id="chartEmpty">Complete a round to start your chart.</div>
-        </div>
-        <div class="legend" aria-hidden="true">
-          <span><i style="background:#10B981"></i>Best</span>
-          <span><i style="background:#3B82F6"></i>Latest</span>
-          <span><i style="background:rgba(59,130,246,.42)"></i>Earlier</span>
-        </div>
-      </div>
     </aside>
   </main>
 
   <footer class="footer">
-    <p>Built with vanilla JavaScript and Three.js. The stimulus is timestamped in the same animation frame that draws it, and your input uses the browser's high-resolution event timestamp. Session data lives in memory only and clears when you close the page.</p>
+    <p>Built with vanilla JavaScript and <span class="keep-case">Three.js</span>. The stimulus is timestamped in the same animation frame that draws it, and your input uses the browser's high-resolution event timestamp. Session data lives in memory only and clears when you close the page.</p>
   </footer>
 </div>
 
@@ -404,9 +373,7 @@
     MAX_DELAY_MS: 5000,
     ANTICIPATION_MS: 100, // below this, a response is a guess, not a reaction
     TIMEOUT_MS: 3000,
-    COOLDOWN_MS: 350,     // guards against a double tap starting a new round
-    HISTORY_BARS: 12,
-    TYPICAL_MS: 250
+    COOLDOWN_MS: 350      // guards against a double tap starting a new round
   });
 
   const State = Object.freeze({
@@ -437,8 +404,7 @@
     sessionMeta: $('sessionMeta'), bestValue: $('bestValue'), bestRating: $('bestRating'),
     statAvg: $('statAvg'), statLast: $('statLast'), statCount: $('statCount'),
     statFalse: $('statFalse'), statSd: $('statSd'), statWorst: $('statWorst'),
-    chart: $('chart'), bars: $('bars'), refline: $('refline'), chartEmpty: $('chartEmpty'),
-    historyMeta: $('historyMeta'), live: $('live')
+    live: $('live')
   };
 
   const motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -472,11 +438,11 @@
 
   function rate(ms) {
     if (ms < 180) return 'Exceptional reflexes';
-    if (ms < 220) return 'Excellent, well above typical';
-    if (ms < 260) return 'Great, around the typical range';
-    if (ms < 310) return 'Good, just above typical';
-    if (ms < 400) return 'Average, keep going';
-    return 'Room to improve, stay focused on the shape';
+    if (ms < 220) return 'Excellent reaction';
+    if (ms < 260) return 'Great reaction';
+    if (ms < 310) return 'Good reaction';
+    if (ms < 400) return 'Average reaction';
+    return 'Room to improve';
   }
 
   function setValue(el, value, unit) {
@@ -489,6 +455,21 @@
       u.textContent = unit;
       el.append(u);
     }
+  }
+
+  // Writes a sentence, keeping any "ms" unit lowercase under capitalize
+  function setSub(text) {
+    dom.sub.textContent = '';
+    text.split(/\b(ms)\b/).forEach((part, i) => {
+      if (i % 2) {
+        const u = document.createElement('span');
+        u.className = 'keep-case';
+        u.textContent = part;
+        dom.sub.append(u);
+      } else if (part) {
+        dom.sub.append(part);
+      }
+    });
   }
 
   function flash(el, rgb) {
@@ -523,13 +504,13 @@
    * 3D visuals
    * ------------------------------------------------------------------ */
   const PROFILES = {
-    idle:    { color: 0x94A3B8, light: 0x3B82F6, emissive: 0.06, scale: 1.0,  spin: 0.22, orbitR: 2.4, orbitSpeed: 0.22, shell: 0.22, pulse: 0.015 },
-    waiting: { color: 0xF59E0B, light: 0xF59E0B, emissive: 0.16, scale: 0.8,  spin: 0.55, orbitR: 1.95, orbitSpeed: 0.85, shell: 0.34, pulse: 0.035 },
-    ready:   { color: 0x10B981, light: 0x10B981, emissive: 0.6,  scale: 1.3,  spin: 1.4,  orbitR: 2.9, orbitSpeed: 1.6, shell: 0.85, pulse: 0 },
-    result:  { color: 0x3B82F6, light: 0x3B82F6, emissive: 0.2,  scale: 1.0,  spin: 0.3,  orbitR: 2.5, orbitSpeed: 0.3, shell: 0.3, pulse: 0.015 },
-    error:   { color: 0xEF4444, light: 0xEF4444, emissive: 0.3,  scale: 0.88, spin: 0.12, orbitR: 2.3, orbitSpeed: 0.15, shell: 0.4, pulse: 0 }
+    idle:    { color: 0x94A3B8, light: 0x3B82F6, emissive: 0.06, scale: 1.0,  spin: 0.22, shell: 0.22, pulse: 0.015 },
+    waiting: { color: 0xF59E0B, light: 0xF59E0B, emissive: 0.16, scale: 0.8,  spin: 0.55, shell: 0.34, pulse: 0.035 },
+    ready:   { color: 0x10B981, light: 0x10B981, emissive: 0.6,  scale: 1.3,  spin: 1.4,  shell: 0.85, pulse: 0 },
+    result:  { color: 0x3B82F6, light: 0x3B82F6, emissive: 0.2,  scale: 1.0,  spin: 0.3,  shell: 0.3, pulse: 0.015 },
+    error:   { color: 0xEF4444, light: 0xEF4444, emissive: 0.3,  scale: 0.88, spin: 0.12, shell: 0.4, pulse: 0 }
   };
-  const NUMERIC_KEYS = ['emissive', 'scale', 'spin', 'orbitR', 'orbitSpeed', 'shell', 'pulse'];
+  const NUMERIC_KEYS = ['emissive', 'scale', 'spin', 'shell', 'pulse'];
 
   const PROFILE_FOR_STATE = {
     idle: 'idle', waiting: 'waiting', ready: 'ready', result: 'result', 'false-start': 'error'
@@ -563,8 +544,8 @@
       this.scene = scene;
 
       this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-      this.baseCam = { y: 0, z: 9 };
-      this.camera.position.set(0, 0, this.baseCam.z);
+      this.baseCam = { y: 0, z: 7.5 };
+      this.camera.position.set(0, 0, 7.5);
 
       this.root = new THREE.Group();
       this.baseY = 0.75;
@@ -597,24 +578,6 @@
       this.shellMat = this.track(new THREE.LineBasicMaterial({ color: 0x94A3B8, transparent: true, opacity: 0.22 }));
       this.shell = new THREE.LineSegments(shellGeo, this.shellMat);
       this.root.add(this.shell);
-
-      // Orbit ring and satellites share one tilt
-      const tilt = Math.PI * 0.42;
-      this.ringMat = this.track(new THREE.MeshBasicMaterial({ color: 0x94A3B8, transparent: true, opacity: 0.3 }));
-      this.ring = new THREE.Mesh(this.track(new THREE.TorusGeometry(1, 0.006, 6, 180)), this.ringMat);
-      this.ring.rotation.x = tilt;
-      this.root.add(this.ring);
-
-      this.satMat = this.track(new THREE.MeshStandardMaterial({
-        color: 0x94A3B8, emissive: 0x94A3B8, emissiveIntensity: 0.3,
-        metalness: 0.2, roughness: 0.4, flatShading: true
-      }));
-      const satGeo = this.track(new THREE.OctahedronGeometry(0.1, 0));
-      this.satellites = new THREE.Group();
-      this.satellites.rotation.x = tilt;
-      this.satCount = 10;
-      for (let i = 0; i < this.satCount; i++) this.satellites.add(new THREE.Mesh(satGeo, this.satMat));
-      this.root.add(this.satellites);
 
       // Shockwave: one pooled mesh reused for every burst (no per-event allocation)
       this.waveMat = this.track(new THREE.MeshBasicMaterial({
@@ -651,7 +614,6 @@
       this.target = PROFILES.idle;
       this.applyProfile(PROFILES.idle, true);
 
-      this.orbitAngle = 0;
       this.shakeT = 0;
       this.parallax = { x: 0, y: 0, tx: 0, ty: 0 };
 
@@ -698,8 +660,8 @@
       this.renderer.setSize(w, h, false);
       const aspect = w / h;
       this.camera.aspect = aspect;
-      // Pull back on portrait screens so the orbit never clips
-      this.baseCam.z = aspect < 1.1 ? 9 + (1.1 / aspect - 1) * 6.5 : 9;
+      // Pull back on portrait screens so the shape stays inside the box
+      this.baseCam.z = aspect < 1.1 ? 7.5 + (1.1 / aspect - 1) * 4.5 : 7.5;
       this.baseY = aspect < 1 ? 1.1 : 0.75;
       this.camera.updateProjectionMatrix();
     }
@@ -739,24 +701,8 @@
       this.coreMat.emissiveIntensity = c.emissive;
       this.shellMat.color.copy(c.color);
       this.shellMat.opacity = c.shell;
-      this.ringMat.color.copy(c.color);
-      this.ringMat.opacity = 0.12 + c.shell * 0.4;
-      this.satMat.color.copy(c.color);
-      this.satMat.emissive.copy(c.color);
       this.particleMat.color.copy(c.color);
       this.accent.color.copy(c.light);
-
-      // Orbit (angle is integrated so speed changes never cause a jump)
-      this.ring.scale.setScalar(c.orbitR);
-      this.orbitAngle += dt * c.orbitSpeed * motion;
-      const sats = this.satellites.children;
-      for (let i = 0; i < sats.length; i++) {
-        const a = this.orbitAngle + (i / this.satCount) * Math.PI * 2;
-        const m = sats[i];
-        m.position.set(Math.cos(a) * c.orbitR, Math.sin(a) * c.orbitR, Math.sin(a * 3 + t) * 0.12 * motion);
-        m.rotation.x += dt * 2 * motion;
-        m.rotation.y += dt * 1.4 * motion;
-      }
 
       this.particles.rotation.y += dt * 0.02 * motion;
       this.particles.rotation.x += dt * 0.006 * motion;
@@ -889,7 +835,7 @@
 
     dom.kicker.textContent = kicker;
     setValue(dom.headline, headline, headlineUnit);
-    dom.sub.textContent = sub;
+    setSub(sub);
 
     // Transition cue for every state except the stimulus, which must be instant
     dom.overlay.classList.remove('pop');
@@ -1008,7 +954,7 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * Stats panel and chart
+   * Stats panel
    * ------------------------------------------------------------------ */
   function renderStats({ changed, isBest } = {}) {
     const n = stats.count;
@@ -1050,35 +996,6 @@
       }
     }
 
-    renderChart();
-  }
-
-  function renderChart() {
-    const recent = stats.times.slice(-CONFIG.HISTORY_BARS);
-    const offset = stats.count - recent.length;
-    dom.chartEmpty.hidden = recent.length > 0;
-    dom.historyMeta.textContent = stats.count > CONFIG.HISTORY_BARS ? `Last ${CONFIG.HISTORY_BARS} of ${stats.count}` : `Last ${CONFIG.HISTORY_BARS}`;
-
-    const scaleMax = Math.max(400, ...recent) * 1.08;
-    dom.refline.style.bottom = `${(CONFIG.TYPICAL_MS / scaleMax) * 100}%`;
-    dom.refline.hidden = recent.length === 0;
-
-    const best = stats.best;
-    const frag = document.createDocumentFragment();
-    recent.forEach((ms, i) => {
-      const bar = document.createElement('div');
-      bar.className = 'bar';
-      if (i === recent.length - 1) bar.classList.add('latest');
-      if (ms === best) bar.classList.add('best');
-      bar.style.height = `${Math.max(3, (ms / scaleMax) * 100)}%`;
-      bar.title = `Attempt ${offset + i + 1}: ${ms} ms`;
-      frag.append(bar);
-    });
-    dom.bars.replaceChildren(frag);
-
-    dom.chart.setAttribute('aria-label', recent.length
-      ? `Bar chart of the last ${recent.length} reaction times: ${recent.join(', ')} milliseconds.`
-      : 'No attempts recorded yet');
   }
 
   /* ------------------------------------------------------------------ *
@@ -1123,7 +1040,7 @@
       const fps = Math.round(perf.frames / perf.time);
       if (visuals && visuals.ok && perf.slow / perf.time > 0.5) visuals.reduceQuality();
       const mode = visuals && visuals.ok ? `WebGL ${visuals.pixelRatio}x` : '2D mode';
-      dom.perfChip.textContent = `${fps} fps, ${mode}`;
+      dom.perfChip.textContent = `${fps} FPS, ${mode}`;
       perf.frames = 0; perf.time = 0; perf.slow = 0;
     }
   }
@@ -1185,7 +1102,7 @@
   // A hidden tab pauses rendering, so any round in progress is invalid.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      stopRound('Round cancelled because the tab lost focus');
+      stopRound('Round cancelled');
     } else {
       lastFrame = performance.now();
     }
