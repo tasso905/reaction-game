@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F172A">
+<meta name="description" content="A 3D reaction time test built with vanilla JavaScript and Three.js.">
+<title>Reflex: 3D reaction timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0F172A;
+    --surface: #1E293B;
+    --surface-sunk: #162033;
+    --line: rgba(148, 163, 184, 0.16);
+    --text: #F1F5F9;
+    --muted: #94A3B8;
+    --ready: #10B981;
+    --wait: #F59E0B;
+    --result: #3B82F6;
+    --error: #EF4444;
+    --state: #94A3B8;
+    --state-rgb: 148, 163, 184;
+    --btn-bg: var(--ready);
+    --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-head: "Outfit", "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: dark;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { background: var(--bg); scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* State tokens: one attribute drives every colour in the UI */
+  body[data-state="idle"]        { --state: #94A3B8; --state-rgb: 148, 163, 184; --btn-bg: var(--ready); }
+  body[data-state="waiting"]     { --state: #F59E0B; --state-rgb: 245, 158, 11;  --btn-bg: var(--text); }
+  body[data-state="ready"]       { --state: #10B981; --state-rgb: 16, 185, 129;  --btn-bg: var(--text); }
+  body[data-state="result"]      { --state: #3B82F6; --state-rgb: 59, 130, 246;  --btn-bg: var(--result); }
+  body[data-state="false-start"] { --state: #EF4444; --state-rgb: 239, 68, 68;   --btn-bg: var(--result); }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  .app {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: clamp(16px, 3vw, 36px) clamp(14px, 3vw, 36px) 28px;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(16px, 2.4vw, 24px);
+  }
+
+  /* Header */
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand svg { flex: none; }
+  .brand h1 {
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: clamp(1.4rem, 2.4vw, 1.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 0;
+  }
+  .brand p { margin: 2px 0 0; color: var(--muted); font-size: 0.875rem; }
+  .status {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 8px 14px 8px 12px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    font-size: 0.875rem; font-weight: 600;
+  }
+  .status-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--state);
+    box-shadow: 0 0 0 4px rgba(var(--state-rgb), 0.22);
+    transition: background-color 0.3s, box-shadow 0.3s;
+  }
+  body[data-state="waiting"] .status-dot { animation: blink 1.1s ease-in-out infinite; }
+  body[data-state="ready"] .status-dot { transition: none; }
+  @keyframes blink { 50% { box-shadow: 0 0 0 7px rgba(var(--state-rgb), 0.08); } }
+
+  /* Main layout */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: clamp(16px, 2.4vw, 24px); align-items: start; }
+  @media (max-width: 920px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  /* Stage: the one bold element */
+  .stage {
+    position: relative;
+    height: clamp(360px, 64vh, 620px);
+    border-radius: 22px;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 38%, #213049 0%, #172238 45%, #111a2d 100%);
+    border: 1px solid rgba(var(--state-rgb), 0.38);
+    box-shadow: 0 30px 80px -40px rgba(var(--state-rgb), 0.55);
+    cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.35s ease, box-shadow 0.35s ease;
+    outline: none;
+  }
+  .stage:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+  .stage::after {
+    content: "";
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 36%, rgba(var(--state-rgb), 0.16), transparent 58%);
+    transition: background 0.35s ease;
+  }
+  /* The stimulus must appear in a single frame, never eased in */
+  body[data-state="ready"] .stage,
+  body[data-state="ready"] .stage::after { transition: none; }
+  body[data-state="ready"] .stage::after { background: radial-gradient(circle at 50% 36%, rgba(16, 185, 129, 0.34), transparent 64%); }
+
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .fallback-orb {
+    display: none;
+    position: absolute; left: 50%; top: 36%;
+    width: clamp(120px, 24vw, 200px); aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.45), var(--state) 42%, rgba(var(--state-rgb), 0.25) 78%);
+    box-shadow: 0 0 90px rgba(var(--state-rgb), 0.55);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  body.no-webgl .fallback-orb { display: block; }
+  body.no-webgl[data-state="ready"] .fallback-orb { transition: none; transform: translate(-50%, -50%) scale(1.15); }
+
+  .hud {
+    position: absolute; top: 14px; left: 16px; right: 16px;
+    display: flex; justify-content: space-between; gap: 12px;
+    font-size: 0.8125rem; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .hud span { background: rgba(15, 23, 42, 0.6); border: 1px solid var(--line); padding: 4px 10px; border-radius: 8px; backdrop-filter: blur(6px); }
+
+  .notice {
+    position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    font-size: 0.8125rem; color: var(--text);
+    background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.4);
+    padding: 6px 12px; border-radius: 8px;
+    pointer-events: none; z-index: 2; text-align: center;
+  }
+
+  .overlay {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 64px clamp(18px, 4vw, 40px) clamp(22px, 4vw, 36px);
+    text-align: center;
+    pointer-events: none;
+    background: linear-gradient(to top, rgba(15, 23, 42, 0.92) 30%, rgba(15, 23, 42, 0));
+    z-index: 1;
+  }
+  .overlay.pop .headline { animation: pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+  @keyframes pop { from { transform: translateY(6px) scale(0.97); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  .kicker { margin: 0 0 4px; font-size: 0.9375rem; font-weight: 600; color: var(--state); min-height: 1.4em; }
+  body[data-state="idle"] .kicker { color: var(--muted); }
+  .headline {
+    margin: 0;
+    font-family: var(--font-head);
+    font-weight: 800;
+    font-size: clamp(2.5rem, 7.5vw, 4.75rem);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  body[data-state="ready"] .headline,
+  body[data-state="result"] .headline,
+  body[data-state="false-start"] .headline { color: var(--state); }
+  body[data-state="ready"] .headline { font-size: clamp(3rem, 10vw, 6rem); }
+  .headline .unit { font-size: 0.42em; font-weight: 600; letter-spacing: 0; margin-left: 0.12em; color: var(--muted); }
+  .sub { margin: 12px auto 0; max-width: 46ch; color: var(--muted); font-size: 1rem; min-height: 1.5em; }
+
+  /* Controls */
+  .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    height: 50px; padding: 0 22px;
+    border-radius: 12px; border: 1px solid transparent;
+    font: 600 1rem/1 var(--font-ui);
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.08s;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .btn-primary { background: var(--btn-bg); color: #0F172A; min-width: 170px; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-ghost { background: var(--surface); color: var(--text); border-color: var(--line); }
+  .btn-ghost:hover:not(:disabled) { border-color: rgba(148, 163, 184, 0.4); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .keys { margin-left: auto; color: var(--muted); font-size: 0.875rem; }
+  kbd {
+    font: 600 0.8125rem var(--font-ui);
+    color: var(--text);
+    background: var(--surface); border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 6px; padding: 2px 7px;
+  }
+  @media (max-width: 560px) {
+    .controls .btn { flex: 1 1 0; min-width: 0; }
+    .keys { display: none; }
+  }
+
+  /* Steps under the stage: a real sequence, so it is numbered */
+  .steps { list-style: none; margin: 22px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: step; }
+  .steps li { counter-increment: step; display: grid; grid-template-columns: 28px 1fr; gap: 10px; font-size: 0.9375rem; color: var(--muted); }
+  .steps li::before {
+    content: counter(step);
+    width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center;
+    font: 700 0.8125rem var(--font-head);
+    color: var(--text); border: 1px solid var(--line);
+  }
+  .steps strong { display: block; color: var(--text); font-weight: 600; }
+  @media (max-width: 700px) { .steps { grid-template-columns: 1fr; gap: 12px; } }
+
+  /* Session panel: one surface, clear hierarchy */
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; padding: 20px 22px 0; }
+  .panel-head h2 { margin: 0; font-family: var(--font-head); font-weight: 600; font-size: 1.125rem; letter-spacing: -0.01em; }
+  .panel-head span { color: var(--muted); font-size: 0.875rem; }
+
+  .best { padding: 14px 22px 18px; }
+  .best-label { font-size: 0.875rem; color: var(--muted); }
+  .best-value {
+    font-family: var(--font-head); font-weight: 700;
+    font-size: 3rem; line-height: 1.05; letter-spacing: -0.03em;
+    color: var(--ready); font-variant-numeric: tabular-nums;
+  }
+  .best-value .unit { font-size: 0.4em; color: var(--muted); font-weight: 600; margin-left: 4px; letter-spacing: 0; }
+  .best-value.is-empty { color: var(--muted); }
+  .best-rating { font-size: 0.875rem; color: var(--muted); min-height: 1.3em; }
+
+  .figures { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); }
+  .figure { padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  .figure:nth-child(odd) { border-right: 1px solid var(--line); }
+  .figure dt { font-size: 0.8125rem; color: var(--muted); }
+  .figure dd { margin: 2px 0 0; font-size: 1.375rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .figure dd .unit { font-size: 0.8125rem; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  .figure.avg dd { color: var(--result); }
+  .figure.errors dd.has-errors { color: var(--error); }
+  .flash { animation: flash 0.7s ease-out; }
+  @keyframes flash { from { background: rgba(var(--flash-rgb, 59, 130, 246), 0.2); } to { background: transparent; } }
+
+  .history { padding: 18px 22px 22px; }
+  .history-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .history-head h3 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
+  .history-head span { font-size: 0.8125rem; color: var(--muted); }
+  .chart { position: relative; height: 128px; border-bottom: 1px solid var(--line); }
+  .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 6px; }
+  .bar {
+    flex: 1 1 0; min-width: 0;
+    background: rgba(59, 130, 246, 0.42);
+    border-radius: 5px 5px 1px 1px;
+    transform-origin: bottom;
+  }
+  .bar.latest { background: var(--result); animation: grow 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .bar.best { background: var(--ready); }
+  @keyframes grow { from { transform: scaleY(0); } }
+  .refline { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(148, 163, 184, 0.45); pointer-events: none; }
+  .refline span { position: absolute; right: 0; bottom: 3px; font-size: 0.75rem; color: var(--muted); background: var(--surface); padding-left: 6px; }
+  .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 0.875rem; padding: 0 12px; }
+  .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 0.8125rem; color: var(--muted); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+  .footer { color: var(--muted); font-size: 0.8125rem; max-width: 80ch; }
+  .footer p { margin: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body data-state="idle">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+        <rect width="40" height="40" rx="11" fill="#1E293B"/>
+        <path d="M20 8l10.4 6v12L20 32 9.6 26V14z" fill="none" stroke="#10B981" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M20 8v24M9.6 14L30.4 26M30.4 14L9.6 26" stroke="#10B981" stroke-opacity=".45" stroke-width="1.2"/>
+      </svg>
+      <div>
+        <h1>Reflex</h1>
+        <p>How fast can you react to what you see?</p>
+      </div>
+    </div>
+    <div class="status" aria-hidden="true"><span class="status-dot"></span><span id="statusLabel">Idle</span></div>
+  </header>
+
+  <main class="layout">
+    <section aria-label="Reaction test">
+      <div id="stage" class="stage" tabindex="0" role="button" aria-describedby="headline sub">
+        <canvas id="scene" aria-hidden="true"></canvas>
+        <div class="fallback-orb" aria-hidden="true"></div>
+        <div class="hud" aria-hidden="true">
+          <span id="attemptChip">Attempt 1</span>
+          <span id="perfChip">Starting renderer</span>
+        </div>
+        <div id="notice" class="notice" role="status" hidden></div>
+        <div id="overlay" class="overlay">
+          <p id="kicker" class="kicker"></p>
+          <h2 id="headline" class="headline"></h2>
+          <p id="sub" class="sub"></p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="primaryBtn" class="btn btn-primary" type="button"></button>
+        <button id="resetBtn" class="btn btn-ghost" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          Reset session
+        </button>
+        <p class="keys"><kbd>Space</kbd> to react, <kbd>Esc</kbd> to stop</p>
+      </div>
+
+      <ol class="steps">
+        <li><div><strong>Start a round</strong>The shape turns amber. Keep your eyes on it.</div></li>
+        <li><div><strong>Wait for green</strong>It changes after 1 to 5 seconds, never on a pattern.</div></li>
+        <li><div><strong>React instantly</strong>Tap, click or press Space. Early presses don't count.</div></li>
+      </ol>
+    </section>
+
+    <aside class="panel" aria-labelledby="sessionTitle">
+      <div class="panel-head">
+        <h2 id="sessionTitle">This session</h2>
+        <span id="sessionMeta">No attempts yet</span>
+      </div>
+
+      <div class="best">
+        <div class="best-label">Best time</div>
+        <div id="bestValue" class="best-value is-empty">&ndash;</div>
+        <div id="bestRating" class="best-rating">Your fastest valid reaction shows here.</div>
+      </div>
+
+      <dl class="figures">
+        <div class="figure avg" id="figAvg"><dt>Average</dt><dd id="statAvg">&ndash;</dd></div>
+        <div class="figure" id="figLast"><dt>Last</dt><dd id="statLast">&ndash;</dd></div>
+        <div class="figure" id="figCount"><dt>Valid attempts</dt><dd id="statCount">0</dd></div>
+        <div class="figure errors" id="figFalse"><dt>False starts</dt><dd id="statFalse">0</dd></div>
+        <div class="figure" id="figSd"><dt>Consistency</dt><dd id="statSd">&ndash;</dd></div>
+        <div class="figure" id="figWorst"><dt>Slowest</dt><dd id="statWorst">&ndash;</dd></div>
+      </dl>
+
+      <div class="history">
+        <div class="history-head">
+          <h3>Recent attempts</h3>
+          <span id="historyMeta">Last 12</span>
+        </div>
+        <div class="chart" id="chart" role="img" aria-label="No attempts recorded yet">
+          <div class="bars" id="bars"></div>
+          <div class="refline" id="refline"><span>Typical 250 ms</span></div>
+          <div class="chart-empty" id="chartEmpty">Complete a round to start your chart.</div>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><i style="background:#10B981"></i>Best</span>
+          <span><i style="background:#3B82F6"></i>Latest</span>
+          <span><i style="background:rgba(59,130,246,.42)"></i>Earlier</span>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="footer">
+    <p>Built with vanilla JavaScript and Three.js. The stimulus is timestamped in the same animation frame that draws it, and your input uses the browser's high-resolution event timestamp. Session data lives in memory only and clears when you close the page.</p>
+  </footer>
+</div>
+
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  /* ------------------------------------------------------------------ *
+   * Configuration
+   * ------------------------------------------------------------------ */
+  const CONFIG = Object.freeze({
+    MIN_DELAY_MS: 1000,
+    MAX_DELAY_MS: 5000,
+    ANTICIPATION_MS: 100, // below this, a response is a guess, not a reaction
+    TIMEOUT_MS: 3000,
+    COOLDOWN_MS: 350,     // guards against a double tap starting a new round
+    HISTORY_BARS: 12,
+    TYPICAL_MS: 250
+  });
+
+  const State = Object.freeze({
+    IDLE: 'idle',
+    WAITING: 'waiting',
+    READY: 'ready',
+    RESULT: 'result',
+    FALSE_START: 'false-start'
+  });
+
+  const STATUS_LABEL = {
+    idle: 'Idle', waiting: 'Waiting', ready: 'Go', result: 'Result', 'false-start': 'False start'
+  };
+
+  const ICONS = {
+    play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>',
+    stop: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>',
+    again: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>'
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const dom = {
+    body: document.body,
+    stage: $('stage'), canvas: $('scene'), overlay: $('overlay'),
+    kicker: $('kicker'), headline: $('headline'), sub: $('sub'),
+    notice: $('notice'), attemptChip: $('attemptChip'), perfChip: $('perfChip'),
+    statusLabel: $('statusLabel'), primaryBtn: $('primaryBtn'), resetBtn: $('resetBtn'),
+    sessionMeta: $('sessionMeta'), bestValue: $('bestValue'), bestRating: $('bestRating'),
+    statAvg: $('statAvg'), statLast: $('statLast'), statCount: $('statCount'),
+    statFalse: $('statFalse'), statSd: $('statSd'), statWorst: $('statWorst'),
+    chart: $('chart'), bars: $('bars'), refline: $('refline'), chartEmpty: $('chartEmpty'),
+    historyMeta: $('historyMeta'), live: $('live')
+  };
+
+  const motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const prefersReducedMotion = () => Boolean(motionQuery && motionQuery.matches);
+
+  /* ------------------------------------------------------------------ *
+   * Utilities
+   * ------------------------------------------------------------------ */
+
+  // Cryptographic randomness where available so delays can't be predicted.
+  function randomBetween(min, max) {
+    let r;
+    if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+      const buf = new Uint32Array(1);
+      window.crypto.getRandomValues(buf);
+      r = buf[0] / 4294967296;
+    } else {
+      r = Math.random();
+    }
+    return min + r * (max - min);
+  }
+
+  // Prefer the event's own high-resolution timestamp (same time origin as
+  // performance.now()); it excludes any delay before our handler ran.
+  function eventTime(e) {
+    const now = performance.now();
+    const ts = e && e.timeStamp;
+    if (typeof ts === 'number' && ts > 0 && ts <= now + 1 && now - ts < 1000) return ts;
+    return now;
+  }
+
+  function rate(ms) {
+    if (ms < 180) return 'Exceptional reflexes';
+    if (ms < 220) return 'Excellent, well above typical';
+    if (ms < 260) return 'Great, around the typical range';
+    if (ms < 310) return 'Good, just above typical';
+    if (ms < 400) return 'Average, keep going';
+    return 'Room to improve, stay focused on the shape';
+  }
+
+  function setValue(el, value, unit) {
+    el.textContent = '';
+    if (value === null || value === undefined) { el.textContent = '\u2013'; return; }
+    el.append(String(value));
+    if (unit) {
+      const u = document.createElement('span');
+      u.className = 'unit';
+      u.textContent = unit;
+      el.append(u);
+    }
+  }
+
+  function flash(el, rgb) {
+    el.style.setProperty('--flash-rgb', rgb);
+    el.classList.remove('flash');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('flash');
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Session statistics (pure data, no DOM)
+   * ------------------------------------------------------------------ */
+  const stats = {
+    times: [],
+    falseStarts: 0,
+    add(ms) { this.times.push(ms); },
+    reset() { this.times.length = 0; this.falseStarts = 0; },
+    get count() { return this.times.length; },
+    get last() { return this.count ? this.times[this.count - 1] : null; },
+    get best() { return this.count ? Math.min(...this.times) : null; },
+    get worst() { return this.count ? Math.max(...this.times) : null; },
+    get average() { return this.count ? this.times.reduce((a, b) => a + b, 0) / this.count : null; },
+    get stdDev() {
+      const n = this.count;
+      if (n < 2) return null;
+      const m = this.average;
+      return Math.sqrt(this.times.reduce((acc, t) => acc + (t - m) ** 2, 0) / (n - 1));
+    }
+  };
+
+  /* ------------------------------------------------------------------ *
+   * 3D visuals
+   * ------------------------------------------------------------------ */
+  const PROFILES = {
+    idle:    { color: 0x94A3B8, light: 0x3B82F6, emissive: 0.06, scale: 1.0,  spin: 0.22, orbitR: 2.4, orbitSpeed: 0.22, shell: 0.22, pulse: 0.015 },
+    waiting: { color: 0xF59E0B, light: 0xF59E0B, emissive: 0.16, scale: 0.8,  spin: 0.55, orbitR: 1.95, orbitSpeed: 0.85, shell: 0.34, pulse: 0.035 },
+    ready:   { color: 0x10B981, light: 0x10B981, emissive: 0.6,  scale: 1.3,  spin: 1.4,  orbitR: 2.9, orbitSpeed: 1.6, shell: 0.85, pulse: 0 },
+    result:  { color: 0x3B82F6, light: 0x3B82F6, emissive: 0.2,  scale: 1.0,  spin: 0.3,  orbitR: 2.5, orbitSpeed: 0.3, shell: 0.3, pulse: 0.015 },
+    error:   { color: 0xEF4444, light: 0xEF4444, emissive: 0.3,  scale: 0.88, spin: 0.12, orbitR: 2.3, orbitSpeed: 0.15, shell: 0.4, pulse: 0 }
+  };
+  const NUMERIC_KEYS = ['emissive', 'scale', 'spin', 'orbitR', 'orbitSpeed', 'shell', 'pulse'];
+
+  const PROFILE_FOR_STATE = {
+    idle: 'idle', waiting: 'waiting', ready: 'ready', result: 'result', 'false-start': 'error'
+  };
+
+  class Visuals {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.ok = false;
+      this.contextLost = false;
+      this.reducedMotion = prefersReducedMotion();
+      this.disposables = [];
+      this.lowQuality = false;
+    }
+
+    track(resource) { this.disposables.push(resource); return resource; }
+
+    init() {
+      if (typeof THREE === 'undefined') throw new Error('Three.js did not load');
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: this.canvas, antialias: true, alpha: true, powerPreference: 'high-performance'
+      });
+      this.renderer = renderer;
+      this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      renderer.setPixelRatio(this.pixelRatio);
+      renderer.setClearColor(0x000000, 0);
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.Fog(0x0F172A, 10, 20);
+      this.scene = scene;
+
+      this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+      this.baseCam = { y: 0, z: 9 };
+      this.camera.position.set(0, 0, this.baseCam.z);
+
+      this.root = new THREE.Group();
+      this.baseY = 0.75;
+      scene.add(this.root);
+
+      // Lighting: soft fill, white key, blue rim and a state-coloured accent.
+      scene.add(new THREE.HemisphereLight(0xCBD5E1, 0x0F172A, 0.55));
+      const key = new THREE.DirectionalLight(0xffffff, 0.85);
+      key.position.set(3, 4, 5);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0x3B82F6, 0.35);
+      rim.position.set(-4, -2, -3);
+      scene.add(rim);
+      this.accent = new THREE.PointLight(0x3B82F6, 1.5, 14, 2);
+      this.accent.position.set(0, 0.8, 3.5);
+      scene.add(this.accent);
+
+      // Faceted core
+      this.coreMat = this.track(new THREE.MeshStandardMaterial({
+        color: 0x94A3B8, emissive: 0x94A3B8, emissiveIntensity: 0.06,
+        metalness: 0.35, roughness: 0.32, flatShading: true
+      }));
+      this.core = new THREE.Mesh(this.track(new THREE.IcosahedronGeometry(1, 1)), this.coreMat);
+      this.root.add(this.core);
+
+      // Wireframe shell
+      const shellSource = new THREE.IcosahedronGeometry(1.55, 1);
+      const shellGeo = this.track(new THREE.EdgesGeometry(shellSource));
+      shellSource.dispose();
+      this.shellMat = this.track(new THREE.LineBasicMaterial({ color: 0x94A3B8, transparent: true, opacity: 0.22 }));
+      this.shell = new THREE.LineSegments(shellGeo, this.shellMat);
+      this.root.add(this.shell);
+
+      // Orbit ring and satellites share one tilt
+      const tilt = Math.PI * 0.42;
+      this.ringMat = this.track(new THREE.MeshBasicMaterial({ color: 0x94A3B8, transparent: true, opacity: 0.3 }));
+      this.ring = new THREE.Mesh(this.track(new THREE.TorusGeometry(1, 0.006, 6, 180)), this.ringMat);
+      this.ring.rotation.x = tilt;
+      this.root.add(this.ring);
+
+      this.satMat = this.track(new THREE.MeshStandardMaterial({
+        color: 0x94A3B8, emissive: 0x94A3B8, emissiveIntensity: 0.3,
+        metalness: 0.2, roughness: 0.4, flatShading: true
+      }));
+      const satGeo = this.track(new THREE.OctahedronGeometry(0.1, 0));
+      this.satellites = new THREE.Group();
+      this.satellites.rotation.x = tilt;
+      this.satCount = 10;
+      for (let i = 0; i < this.satCount; i++) this.satellites.add(new THREE.Mesh(satGeo, this.satMat));
+      this.root.add(this.satellites);
+
+      // Shockwave: one pooled mesh reused for every burst (no per-event allocation)
+      this.waveMat = this.track(new THREE.MeshBasicMaterial({
+        color: 0x10B981, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false
+      }));
+      this.wave = new THREE.Mesh(this.track(new THREE.RingGeometry(0.97, 1, 96)), this.waveMat);
+      this.wave.visible = false;
+      this.root.add(this.wave);
+      this.waveT = -1;
+
+      // Ambient particle field
+      const count = 380;
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const r = 4.5 + Math.random() * 6;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+      }
+      const pGeo = this.track(new THREE.BufferGeometry());
+      pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      this.particleMat = this.track(new THREE.PointsMaterial({
+        color: 0x94A3B8, size: 0.035, transparent: true, opacity: 0.5, depthWrite: false
+      }));
+      this.particles = new THREE.Points(pGeo, this.particleMat);
+      scene.add(this.particles);
+
+      // Animated values lerp toward the active profile each frame
+      this.targetColor = new THREE.Color();
+      this.targetLight = new THREE.Color();
+      this.cur = { color: new THREE.Color(), light: new THREE.Color() };
+      this.target = PROFILES.idle;
+      this.applyProfile(PROFILES.idle, true);
+
+      this.orbitAngle = 0;
+      this.shakeT = 0;
+      this.parallax = { x: 0, y: 0, tx: 0, ty: 0 };
+
+      this.onContextLost = (e) => { e.preventDefault(); this.contextLost = true; };
+      this.onContextRestored = () => { this.contextLost = false; };
+      this.canvas.addEventListener('webglcontextlost', this.onContextLost, false);
+      this.canvas.addEventListener('webglcontextrestored', this.onContextRestored, false);
+
+      this.ok = true;
+      return this;
+    }
+
+    applyProfile(profile, instant) {
+      this.target = profile;
+      this.targetColor.setHex(profile.color);
+      this.targetLight.setHex(profile.light);
+      if (instant) {
+        this.cur.color.copy(this.targetColor);
+        this.cur.light.copy(this.targetLight);
+        for (const k of NUMERIC_KEYS) this.cur[k] = profile[k];
+      }
+    }
+
+    setState(profileKey, instant) {
+      const profile = PROFILES[profileKey] || PROFILES.idle;
+      this.applyProfile(profile, Boolean(instant));
+    }
+
+    burst(hex) {
+      this.waveMat.color.setHex(hex);
+      this.waveT = 0;
+    }
+
+    shake() { if (!this.reducedMotion) this.shakeT = 0.45; }
+
+    setParallax(x, y) {
+      if (this.reducedMotion) return;
+      this.parallax.tx = x;
+      this.parallax.ty = y;
+    }
+
+    resize(w, h) {
+      if (!this.ok || w === 0 || h === 0) return;
+      this.renderer.setSize(w, h, false);
+      const aspect = w / h;
+      this.camera.aspect = aspect;
+      // Pull back on portrait screens so the orbit never clips
+      this.baseCam.z = aspect < 1.1 ? 9 + (1.1 / aspect - 1) * 6.5 : 9;
+      this.baseY = aspect < 1 ? 1.1 : 0.75;
+      this.camera.updateProjectionMatrix();
+    }
+
+    reduceQuality() {
+      if (this.lowQuality || this.pixelRatio <= 1) return false;
+      this.lowQuality = true;
+      this.pixelRatio = 1;
+      this.renderer.setPixelRatio(1);
+      const { clientWidth: w, clientHeight: h } = this.canvas;
+      this.renderer.setSize(w, h, false);
+      return true;
+    }
+
+    update(dt, t) {
+      const c = this.cur;
+      const p = this.target;
+      const k = 1 - Math.exp(-dt * 6);
+      const motion = this.reducedMotion ? 0.2 : 1;
+
+      c.color.lerp(this.targetColor, k);
+      c.light.lerp(this.targetLight, k);
+      for (const key of NUMERIC_KEYS) c[key] += (p[key] - c[key]) * k;
+
+      // Core and shell
+      this.core.rotation.x += dt * c.spin * 0.6 * motion;
+      this.core.rotation.y += dt * c.spin * motion;
+      this.shell.rotation.y -= dt * c.spin * 0.45 * motion;
+      this.shell.rotation.z += dt * c.spin * 0.2 * motion;
+      const pulse = this.reducedMotion ? 0 : Math.sin(t * 4.2) * c.pulse;
+      const s = c.scale * (1 + pulse);
+      this.core.scale.setScalar(s);
+      this.shell.scale.setScalar(s);
+
+      this.coreMat.color.copy(c.color);
+      this.coreMat.emissive.copy(c.color);
+      this.coreMat.emissiveIntensity = c.emissive;
+      this.shellMat.color.copy(c.color);
+      this.shellMat.opacity = c.shell;
+      this.ringMat.color.copy(c.color);
+      this.ringMat.opacity = 0.12 + c.shell * 0.4;
+      this.satMat.color.copy(c.color);
+      this.satMat.emissive.copy(c.color);
+      this.particleMat.color.copy(c.color);
+      this.accent.color.copy(c.light);
+
+      // Orbit (angle is integrated so speed changes never cause a jump)
+      this.ring.scale.setScalar(c.orbitR);
+      this.orbitAngle += dt * c.orbitSpeed * motion;
+      const sats = this.satellites.children;
+      for (let i = 0; i < sats.length; i++) {
+        const a = this.orbitAngle + (i / this.satCount) * Math.PI * 2;
+        const m = sats[i];
+        m.position.set(Math.cos(a) * c.orbitR, Math.sin(a) * c.orbitR, Math.sin(a * 3 + t) * 0.12 * motion);
+        m.rotation.x += dt * 2 * motion;
+        m.rotation.y += dt * 1.4 * motion;
+      }
+
+      this.particles.rotation.y += dt * 0.02 * motion;
+      this.particles.rotation.x += dt * 0.006 * motion;
+      this.root.position.y = this.baseY + (this.reducedMotion ? 0 : Math.sin(t * 0.9) * 0.06);
+
+      // Shockwave
+      if (this.waveT >= 0) {
+        const duration = 0.75;
+        const u = Math.min(this.waveT / duration, 1);
+        const eased = 1 - (1 - u) ** 3;
+        this.wave.visible = true;
+        this.wave.scale.setScalar(1.3 + eased * 3.4);
+        this.waveMat.opacity = (1 - u) * 0.85;
+        this.wave.quaternion.copy(this.camera.quaternion);
+        this.waveT += dt;
+        if (u >= 1) { this.wave.visible = false; this.waveT = -1; }
+      }
+
+      // Camera: pointer parallax plus a short shake on false starts
+      const pk = 1 - Math.exp(-dt * 4);
+      this.parallax.x += (this.parallax.tx - this.parallax.x) * pk;
+      this.parallax.y += (this.parallax.ty - this.parallax.y) * pk;
+      this.camera.position.set(this.parallax.x * 0.7, this.baseCam.y - this.parallax.y * 0.45, this.baseCam.z);
+      if (this.shakeT > 0) {
+        const amp = (this.shakeT / 0.45) * 0.14;
+        this.camera.position.x += (Math.random() - 0.5) * amp;
+        this.camera.position.y += (Math.random() - 0.5) * amp;
+        this.shakeT -= dt;
+      }
+      this.camera.lookAt(0, this.baseY * 0.55, 0);
+    }
+
+    render() {
+      if (!this.ok || this.contextLost) return;
+      this.renderer.render(this.scene, this.camera);
+    }
+
+    dispose() {
+      if (!this.renderer) return;
+      this.ok = false;
+      this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
+      this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
+      for (const r of this.disposables) { try { r.dispose(); } catch (_) { /* already released */ } }
+      this.disposables.length = 0;
+      if (this.scene) this.scene.clear();
+      this.renderer.dispose();
+      this.renderer = null;
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Game state machine
+   * ------------------------------------------------------------------ */
+  const game = {
+    state: State.IDLE,
+    delayTimer: null,
+    timeoutTimer: null,
+    stimulusPending: false,
+    stimulusAt: 0,
+    lastEndAt: 0,
+    lastKeyAt: -Infinity
+  };
+
+  let visuals = null;
+
+  function clearTimers() {
+    if (game.delayTimer !== null) { clearTimeout(game.delayTimer); game.delayTimer = null; }
+    if (game.timeoutTimer !== null) { clearTimeout(game.timeoutTimer); game.timeoutTimer = null; }
+    game.stimulusPending = false;
+  }
+
+  function announce(message) {
+    dom.live.textContent = '';
+    // Separate write so repeated messages are still announced
+    requestAnimationFrame(() => { dom.live.textContent = message; });
+  }
+
+  function renderOverlay(state, ctx) {
+    let kicker = '';
+    let headline = '';
+    let headlineUnit = '';
+    let sub = '';
+
+    switch (state) {
+      case State.IDLE:
+        kicker = ctx.notice || 'Reaction test';
+        headline = 'Test your reflexes';
+        sub = 'Press Start, tap here or hit Space. React the moment the shape turns green.';
+        break;
+      case State.WAITING:
+        kicker = 'Get ready';
+        headline = 'Wait for green\u2026';
+        sub = 'Reacting now counts as a false start.';
+        break;
+      case State.READY:
+        headline = 'React!';
+        break;
+      case State.RESULT: {
+        kicker = rate(ctx.ms);
+        headline = String(ctx.ms);
+        headlineUnit = 'ms';
+        if (ctx.first) sub = 'First attempt logged. Tap or press Space to go again.';
+        else if (ctx.isBest) sub = 'New personal best. Tap or press Space to go again.';
+        else {
+          const diff = Math.round(ctx.ms - ctx.prevAvg);
+          sub = diff === 0
+            ? 'Right on your average. Tap or press Space to go again.'
+            : `${Math.abs(diff)} ms ${diff < 0 ? 'faster' : 'slower'} than your average. Tap or press Space to go again.`;
+        }
+        break;
+      }
+      case State.FALSE_START:
+        if (ctx.reason === 'timeout') {
+          kicker = 'Missed';
+          headline = 'Too slow';
+          sub = `No reaction within ${CONFIG.TIMEOUT_MS / 1000} seconds, so this round isn't recorded. Tap to try again.`;
+        } else if (ctx.reason === 'anticipation') {
+          kicker = 'False start';
+          headline = 'Too soon!';
+          sub = `${Math.max(0, Math.round(ctx.ms))} ms is faster than human reaction allows, so it counts as a guess. Tap to try again.`;
+        } else {
+          kicker = 'False start';
+          headline = 'Too soon!';
+          sub = 'You reacted before the shape turned green. Tap to try again.';
+        }
+        break;
+      default:
+        break;
+    }
+
+    dom.kicker.textContent = kicker;
+    setValue(dom.headline, headline, headlineUnit);
+    dom.sub.textContent = sub;
+
+    // Transition cue for every state except the stimulus, which must be instant
+    dom.overlay.classList.remove('pop');
+    if (state !== State.READY && !prefersReducedMotion()) {
+      void dom.overlay.offsetWidth;
+      dom.overlay.classList.add('pop');
+    }
+  }
+
+  function renderControls(state) {
+    let icon = ICONS.play;
+    let label = 'Start test';
+    if (state === State.WAITING || state === State.READY) { icon = ICONS.stop; label = 'Stop'; }
+    else if (state === State.RESULT) { icon = ICONS.again; label = 'Next attempt'; }
+    else if (state === State.FALSE_START) { icon = ICONS.again; label = 'Try again'; }
+    dom.primaryBtn.innerHTML = `${icon}<span>${label}</span>`;
+    dom.statusLabel.textContent = STATUS_LABEL[state];
+    dom.stage.setAttribute('aria-label',
+      state === State.WAITING || state === State.READY ? 'Reaction area. Press to react.' : 'Reaction area. Press to start a round.');
+    dom.attemptChip.textContent = `Attempt ${stats.count + 1}`;
+  }
+
+  function setState(next, ctx = {}) {
+    game.state = next;
+    dom.body.dataset.state = next;
+    renderOverlay(next, ctx);
+    renderControls(next);
+
+    if (visuals && visuals.ok) {
+      const isStimulus = next === State.READY;
+      visuals.setState(PROFILE_FOR_STATE[next], isStimulus);
+      if (isStimulus) visuals.burst(0x10B981);
+      else if (next === State.RESULT && ctx.isBest) visuals.burst(0x3B82F6);
+      else if (next === State.FALSE_START && ctx.reason !== 'timeout') visuals.shake();
+    }
+
+    if (next === State.RESULT) announce(`${ctx.ms} milliseconds. ${rate(ctx.ms)}.`);
+    else if (next === State.FALSE_START) announce(ctx.reason === 'timeout' ? 'Missed. Round not recorded.' : 'False start. Round not recorded.');
+    else if (next === State.WAITING) announce('Waiting. React when the shape turns green.');
+    else if (next === State.IDLE && ctx.notice) announce(ctx.notice);
+  }
+
+  function startRound() {
+    clearTimers();
+    setState(State.WAITING);
+    const delay = randomBetween(CONFIG.MIN_DELAY_MS, CONFIG.MAX_DELAY_MS);
+    game.delayTimer = setTimeout(() => {
+      game.delayTimer = null;
+      // The stimulus is presented by the render loop on the next frame,
+      // so the timestamp matches the frame that actually draws it.
+      if (game.state === State.WAITING) game.stimulusPending = true;
+    }, delay);
+  }
+
+  function stopRound(notice) {
+    if (game.state !== State.WAITING && game.state !== State.READY) return;
+    clearTimers();
+    game.lastEndAt = performance.now();
+    setState(State.IDLE, { notice: notice || 'Round stopped' });
+  }
+
+  function falseStart(reason, ms) {
+    clearTimers();
+    if (reason !== 'timeout') stats.falseStarts += 1;
+    game.lastEndAt = performance.now();
+    setState(State.FALSE_START, { reason, ms });
+    renderStats({ changed: reason !== 'timeout' ? 'false' : null });
+  }
+
+  function recordResult(reaction) {
+    clearTimers();
+    const ms = Math.round(reaction);
+    const prevBest = stats.best;
+    const prevAvg = stats.average;
+    stats.add(ms);
+    game.lastEndAt = performance.now();
+    const isBest = prevBest !== null && ms < prevBest;
+    setState(State.RESULT, { ms, isBest, prevAvg, first: prevBest === null });
+    renderStats({ changed: 'result', isBest: isBest || prevBest === null });
+  }
+
+  function onTimeout() {
+    game.timeoutTimer = null;
+    if (game.state === State.READY) falseStart('timeout');
+  }
+
+  // Single entry point for every "react" input: pointer, touch or keyboard.
+  function handleAction(timestamp) {
+    switch (game.state) {
+      case State.IDLE:
+      case State.RESULT:
+      case State.FALSE_START:
+        if (performance.now() - game.lastEndAt < CONFIG.COOLDOWN_MS) return;
+        startRound();
+        break;
+      case State.WAITING:
+        falseStart('early');
+        break;
+      case State.READY: {
+        const reaction = timestamp - game.stimulusAt;
+        if (reaction < CONFIG.ANTICIPATION_MS) falseStart('anticipation', reaction);
+        else recordResult(reaction);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  function resetSession() {
+    clearTimers();
+    stats.reset();
+    game.lastEndAt = 0;
+    setState(State.IDLE, { notice: 'Session reset' });
+    renderStats({});
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Stats panel and chart
+   * ------------------------------------------------------------------ */
+  function renderStats({ changed, isBest } = {}) {
+    const n = stats.count;
+    const best = stats.best;
+
+    dom.sessionMeta.textContent = n === 0 && stats.falseStarts === 0
+      ? 'No attempts yet'
+      : `${n + stats.falseStarts} ${n + stats.falseStarts === 1 ? 'round' : 'rounds'} played`;
+
+    if (best === null) {
+      dom.bestValue.classList.add('is-empty');
+      dom.bestValue.textContent = '\u2013';
+      dom.bestRating.textContent = 'Your fastest valid reaction shows here.';
+    } else {
+      dom.bestValue.classList.remove('is-empty');
+      setValue(dom.bestValue, best, 'ms');
+      dom.bestRating.textContent = rate(best);
+    }
+
+    setValue(dom.statAvg, n ? Math.round(stats.average) : null, 'ms');
+    setValue(dom.statLast, stats.last, 'ms');
+    setValue(dom.statWorst, stats.worst, 'ms');
+    dom.statCount.textContent = String(n);
+    dom.statFalse.textContent = String(stats.falseStarts);
+    dom.statFalse.classList.toggle('has-errors', stats.falseStarts > 0);
+    const sd = stats.stdDev;
+    setValue(dom.statSd, sd === null ? null : `\u00B1${Math.round(sd)}`, 'ms');
+
+    dom.resetBtn.disabled = n === 0 && stats.falseStarts === 0;
+    dom.attemptChip.textContent = `Attempt ${n + 1}`;
+
+    if (!prefersReducedMotion()) {
+      if (changed === 'result') {
+        flash($('figLast'), '59, 130, 246');
+        flash($('figAvg'), '59, 130, 246');
+        if (isBest) flash(dom.bestValue.parentElement, '16, 185, 129');
+      } else if (changed === 'false') {
+        flash($('figFalse'), '239, 68, 68');
+      }
+    }
+
+    renderChart();
+  }
+
+  function renderChart() {
+    const recent = stats.times.slice(-CONFIG.HISTORY_BARS);
+    const offset = stats.count - recent.length;
+    dom.chartEmpty.hidden = recent.length > 0;
+    dom.historyMeta.textContent = stats.count > CONFIG.HISTORY_BARS ? `Last ${CONFIG.HISTORY_BARS} of ${stats.count}` : `Last ${CONFIG.HISTORY_BARS}`;
+
+    const scaleMax = Math.max(400, ...recent) * 1.08;
+    dom.refline.style.bottom = `${(CONFIG.TYPICAL_MS / scaleMax) * 100}%`;
+    dom.refline.hidden = recent.length === 0;
+
+    const best = stats.best;
+    const frag = document.createDocumentFragment();
+    recent.forEach((ms, i) => {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      if (i === recent.length - 1) bar.classList.add('latest');
+      if (ms === best) bar.classList.add('best');
+      bar.style.height = `${Math.max(3, (ms / scaleMax) * 100)}%`;
+      bar.title = `Attempt ${offset + i + 1}: ${ms} ms`;
+      frag.append(bar);
+    });
+    dom.bars.replaceChildren(frag);
+
+    dom.chart.setAttribute('aria-label', recent.length
+      ? `Bar chart of the last ${recent.length} reaction times: ${recent.join(', ')} milliseconds.`
+      : 'No attempts recorded yet');
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Render loop: owns stimulus presentation and timing
+   * ------------------------------------------------------------------ */
+  let rafId = 0;
+  let lastFrame = performance.now();
+  const perf = { frames: 0, time: 0, slow: 0 };
+
+  function frame(now) {
+    rafId = requestAnimationFrame(frame);
+    const dt = Math.min(Math.max((now - lastFrame) / 1000, 0), 0.1);
+    lastFrame = now;
+
+    const presentStimulus = game.stimulusPending && game.state === State.WAITING;
+    if (presentStimulus) {
+      game.stimulusPending = false;
+      setState(State.READY); // DOM and 3D change in this same frame
+    }
+
+    if (visuals && visuals.ok) {
+      try {
+        visuals.update(dt, now / 1000);
+        visuals.render();
+      } catch (err) {
+        // A rendering fault must never break the timing, so drop to 2D mode.
+        console.error('[Reflex] Rendering error, switching to 2D mode.', err);
+        disableVisuals('3D rendering failed, so the test switched to 2D mode. Timing is unaffected.');
+      }
+    }
+
+    if (presentStimulus) {
+      game.stimulusAt = performance.now();
+      game.timeoutTimer = setTimeout(onTimeout, CONFIG.TIMEOUT_MS);
+    }
+
+    // Frame-rate readout and adaptive resolution
+    perf.frames += 1;
+    perf.time += dt;
+    if (dt > 0.024) perf.slow += dt;
+    if (perf.time >= 0.5) {
+      const fps = Math.round(perf.frames / perf.time);
+      if (visuals && visuals.ok && perf.slow / perf.time > 0.5) visuals.reduceQuality();
+      const mode = visuals && visuals.ok ? `WebGL ${visuals.pixelRatio}x` : '2D mode';
+      dom.perfChip.textContent = `${fps} fps, ${mode}`;
+      perf.frames = 0; perf.time = 0; perf.slow = 0;
+    }
+  }
+
+  function disableVisuals(message) {
+    if (visuals) { visuals.dispose(); visuals = null; }
+    dom.body.classList.add('no-webgl');
+    dom.canvas.style.display = 'none';
+    dom.notice.textContent = message;
+    dom.notice.hidden = false;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Input
+   * ------------------------------------------------------------------ */
+  function isOtherControl(target) {
+    const el = target && target.closest ? target.closest('button, a, input, select, textarea') : null;
+    return el !== null && el !== dom.primaryBtn;
+  }
+
+  dom.stage.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    handleAction(eventTime(e));
+  });
+  dom.stage.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  dom.stage.addEventListener('pointermove', (e) => {
+    if (!visuals || !visuals.ok || e.pointerType !== 'mouse') return;
+    const w = dom.stage.clientWidth || 1;
+    const h = dom.stage.clientHeight || 1;
+    visuals.setParallax((e.offsetX / w - 0.5) * 2, (e.offsetY / h - 0.5) * 2);
+  });
+  dom.stage.addEventListener('pointerleave', () => { if (visuals && visuals.ok) visuals.setParallax(0, 0); });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { stopRound(); return; }
+    const isReactKey = e.code === 'Space' || e.key === ' ' || e.key === 'Enter';
+    if (!isReactKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (isOtherControl(e.target)) return; // let other buttons behave natively
+    e.preventDefault();
+    if (e.repeat) return; // holding the key is not a reaction
+    game.lastKeyAt = performance.now();
+    handleAction(eventTime(e));
+  });
+  document.addEventListener('keyup', (e) => {
+    if ((e.code === 'Space' || e.key === ' ') && e.target === dom.primaryBtn) e.preventDefault();
+  });
+
+  dom.primaryBtn.addEventListener('click', (e) => {
+    // Ignore the synthetic click that follows a key press we already handled.
+    if (e.detail === 0 && performance.now() - game.lastKeyAt < 800) return;
+    if (game.state === State.WAITING || game.state === State.READY) stopRound();
+    else startRound();
+  });
+
+  dom.resetBtn.addEventListener('click', resetSession);
+
+  // A hidden tab pauses rendering, so any round in progress is invalid.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopRound('Round cancelled because the tab lost focus');
+    } else {
+      lastFrame = performance.now();
+    }
+  });
+
+  if (motionQuery) {
+    const onMotionChange = () => { if (visuals) visuals.reducedMotion = prefersReducedMotion(); };
+    if (motionQuery.addEventListener) motionQuery.addEventListener('change', onMotionChange);
+    else if (motionQuery.addListener) motionQuery.addListener(onMotionChange);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * Boot and teardown
+   * ------------------------------------------------------------------ */
+  function resizeStage() {
+    if (visuals && visuals.ok) visuals.resize(dom.stage.clientWidth, dom.stage.clientHeight);
+  }
+
+  let resizeObserver = null;
+
+  function boot() {
+    try {
+      visuals = new Visuals(dom.canvas).init();
+    } catch (err) {
+      console.warn('[Reflex] 3D unavailable:', err);
+      visuals = null;
+      disableVisuals('3D graphics are unavailable in this browser, so the test runs in 2D mode. Timing is unaffected.');
+    }
+
+    if ('ResizeObserver' in window) {
+      resizeObserver = new ResizeObserver(resizeStage);
+      resizeObserver.observe(dom.stage);
+    } else {
+      window.addEventListener('resize', resizeStage);
+    }
+    resizeStage();
+
+    setState(State.IDLE);
+    renderStats({});
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function teardown() {
+    clearTimers();
+    cancelAnimationFrame(rafId);
+    if (resizeObserver) resizeObserver.disconnect();
+    if (visuals) { visuals.dispose(); visuals = null; }
+  }
+
+  window.addEventListener('pagehide', (e) => { if (!e.persisted) teardown(); });
+  window.addEventListener('error', (e) => { console.error('[Reflex] Unexpected error:', e.error || e.message); });
+
+  boot();
+})();
+</script>
+</body>
+</html>
