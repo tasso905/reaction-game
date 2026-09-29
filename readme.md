@@ -2,7 +2,7 @@
 
 A browser-based visual reaction time test with a 3D animated stage, built with vanilla JavaScript and [Three.js](https://threejs.org/). Start a round, wait for the shape to turn green, and react as fast as you can. Reflex tracks your session stats, flags false starts, and is designed to keep timing accurate even when the 3D graphics are under load.
 
-The whole app is a single self-contained HTML file with no build step.
+The app is plain HTML, CSS, and JavaScript split across a few static files, with no dependencies to install and no build step.
 
 ## Features
 
@@ -19,11 +19,10 @@ The whole app is a single self-contained HTML file with no build step.
 
 No installation is required.
 
-1. Save the file as `index.html`.
-2. Optionally add a `favicon.png` (128×128) in the same folder.
-3. Open `index.html` in a modern browser.
+1. Keep `index.html`, `styles.css`, `script.js`, and `favicon.png` together in the same folder.
+2. Open `index.html` in a modern browser.
 
-To serve it locally instead of opening the file directly:
+The files are linked with relative paths, so they must stay side by side. To serve them locally instead of opening the file directly:
 
 ```bash
 python3 -m http.server 8000
@@ -75,7 +74,7 @@ The app is driven by a small state machine. A single `data-state` attribute on `
 
 ## Configuration
 
-Timing rules live in the frozen `CONFIG` object at the top of the script:
+Timing rules live in the frozen `CONFIG` object at the top of `script.js`:
 
 ```js
 const CONFIG = Object.freeze({
@@ -87,7 +86,7 @@ const CONFIG = Object.freeze({
 });
 ```
 
-Visual behaviour for each state (colour, glow, scale, spin speed, shell opacity, pulse) is defined in the `PROFILES` object, and the rating thresholds in the `rate()` function. Colours for the page itself are CSS custom properties in `:root` and the `body[data-state=...]` rules.
+Visual behaviour for each state (colour, glow, scale, spin speed, shell opacity, pulse) is defined in the `PROFILES` object, and the rating thresholds in the `rate()` function, both in `script.js`. Colours for the page itself are CSS custom properties in `:root` and the `body[data-state=...]` rules in `styles.css`.
 
 ## How the timing works
 
@@ -106,12 +105,42 @@ Browser reaction tests measure the whole chain, not just your nervous system. Re
 
 ## Project structure
 
-Everything is in one file:
+```
+.
+├── index.html    # Page markup; loads the fonts, styles.css, Three.js, then script.js
+├── styles.css    # All styling
+├── script.js     # All app logic
+├── favicon.png   # 128×128 site icon, also used as the Apple touch icon
+└── README.md
+```
+
+### `index.html`
+
+Contains only markup: the header, the stage (canvas, fallback orb, notice, and text overlay), the controls and step list, the session stats panel, and a screen reader live region. Scripts are loaded at the end of `<body>` in a fixed order, and **Three.js must load before `script.js`**, which expects the global `THREE` object:
+
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="script.js"></script>
+```
+
+### `styles.css`
 
 | Section | Purpose |
 | --- | --- |
-| `<style>` | Layout, state colour tokens, responsive breakpoints, reduced-motion rules |
-| Markup | Header, stage (canvas, fallback orb, overlay), controls, steps, session panel |
+| `:root` tokens | Colours, fonts, and safe-area padding |
+| State tokens | `body[data-state=...]` rules that set the colour for every state |
+| Header and layout | Top bar, sound button, two-column grid that stacks below 920px |
+| Stage | The 3D box, glow, fallback orb, notice, and text overlay |
+| Controls and steps | Buttons, keyboard hints, the numbered how-to list |
+| Session panel | Best time and the stats grid |
+| Reduced motion | Disables animations and transitions when requested |
+
+### `script.js`
+
+Wrapped in an IIFE in strict mode, so it adds nothing to the global scope.
+
+| Section | Purpose |
+| --- | --- |
 | `CONFIG`, `State` | Timing constants and state names |
 | Utilities | Random delays, event timestamps, ratings, DOM helpers |
 | `stats` | Pure session data: times, false starts, and derived values |
