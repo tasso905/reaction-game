@@ -102,6 +102,22 @@
   body[data-state="ready"] .status-dot { transition: none; }
   @keyframes blink { 50% { box-shadow: 0 0 0 7px rgba(var(--state-rgb), 0.08); } }
 
+  .top-actions { display: flex; align-items: center; gap: 10px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 999px;
+    display: grid; place-items: center;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .icon-btn:hover { border-color: rgba(148, 163, 184, 0.4); }
+  .icon-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .icon-btn[aria-pressed="false"] { color: var(--muted); }
+  .icon-btn .icon-off { display: none; }
+  .icon-btn[aria-pressed="false"] .icon-on { display: none; }
+  .icon-btn[aria-pressed="false"] .icon-off { display: block; }
+
   /* Main layout */
   .layout {
     display: grid;
@@ -227,6 +243,7 @@
     height: 50px; padding: 0 22px;
     border-radius: 12px; border: 1px solid transparent;
     font: 600 1rem/1 var(--font-ui);
+    white-space: nowrap;
     cursor: pointer;
     transition: background-color 0.2s, border-color 0.2s, transform 0.08s;
   }
@@ -239,15 +256,21 @@
   .btn-ghost:hover:not(:disabled) { border-color: rgba(148, 163, 184, 0.4); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .keys { margin-left: auto; color: var(--muted); font-size: 0.875rem; }
+  body.is-touch .keys, body.is-touch .desktop-only { display: none; }
+  body:not(.is-touch) .touch-only { display: none; }
   kbd {
     font: 600 0.8125rem var(--font-ui);
     color: var(--text);
     background: var(--surface); border: 1px solid var(--line); border-bottom-width: 2px;
     border-radius: 6px; padding: 2px 7px;
   }
-  @media (max-width: 560px) {
-    .controls .btn { flex: 1 1 0; min-width: 0; }
-    .keys { display: none; }
+  @media (max-width: 640px) {
+    .controls { display: grid; grid-template-columns: 1fr 1fr; }
+    .controls .btn { width: 100%; min-width: 0; padding: 0 14px; }
+    .keys { grid-column: 1 / -1; margin-left: 0; }
+  }
+  @media (max-width: 360px) {
+    .controls { grid-template-columns: 1fr; }
   }
 
   /* Steps under the stage: a real sequence, so it is numbered */
@@ -314,7 +337,13 @@
         <p>How fast can you react to what you see?</p>
       </div>
     </div>
-    <div class="status" aria-hidden="true"><span class="status-dot"></span><span id="statusLabel">Idle</span></div>
+    <div class="top-actions">
+      <button id="soundBtn" class="icon-btn" type="button" aria-pressed="true" aria-label="Sound effects" title="Sound on (M)">
+        <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z" fill="currentColor"/><path d="M22 9l-6 6"/><path d="M16 9l6 6"/></svg>
+      </button>
+      <div class="status" aria-hidden="true"><span class="status-dot"></span><span id="statusLabel">Idle</span></div>
+    </div>
   </header>
 
   <main class="layout">
@@ -340,13 +369,13 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
           Reset session
         </button>
-        <p class="keys"><kbd>Space</kbd> to react, <kbd>Esc</kbd> to stop</p>
+        <p class="keys"><kbd>Space</kbd> to react, <kbd>Esc</kbd> to stop, <kbd>M</kbd> to mute</p>
       </div>
 
       <ol class="steps">
         <li><div><strong>Start a round</strong>The shape turns amber. Keep your eyes on it.</div></li>
         <li><div><strong>Wait for green</strong>It changes after 1 to 5 seconds, never on a pattern.</div></li>
-        <li><div><strong>React instantly</strong>Tap, click or press Space. Early presses don't count.</div></li>
+        <li><div><strong>React instantly</strong><span class="desktop-only">Press Space or click the box.</span><span class="touch-only">Tap the box.</span> Early presses don't count.</div></li>
       </ol>
       </div>
 
@@ -425,11 +454,25 @@
     sessionMeta: $('sessionMeta'), bestValue: $('bestValue'), bestRating: $('bestRating'),
     statAvg: $('statAvg'), statLast: $('statLast'), statCount: $('statCount'),
     statFalse: $('statFalse'), statSd: $('statSd'), statWorst: $('statWorst'),
-    live: $('live')
+    live: $('live'), soundBtn: $('soundBtn')
   };
 
   const motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const prefersReducedMotion = () => Boolean(motionQuery && motionQuery.matches);
+
+  // Desktop-style device (mouse/trackpad) vs touch-first phone or tablet
+  const desktopQuery = window.matchMedia ? window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 641px)') : null;
+  const isDesktop = () => (desktopQuery ? desktopQuery.matches : true);
+  function applyDeviceClass() { document.body.classList.toggle('is-touch', !isDesktop()); }
+
+  // Device-aware wording for the prompts inside the game box
+  const hint = {
+    start: () => isDesktop()
+      ? 'Click this box or press Space to start, then react the moment the shape turns green.'
+      : 'Tap anywhere in this box to start, then react the moment the shape turns green.',
+    again: () => isDesktop() ? 'Click the box or press Space to go again.' : 'Tap the box to go again.',
+    retry: () => isDesktop() ? 'Click the box or press Space to try again.' : 'Tap the box to try again.'
+  };
 
   /* ------------------------------------------------------------------ *
    * Utilities
@@ -518,6 +561,124 @@
       if (n < 2) return null;
       const m = this.average;
       return Math.sqrt(this.times.reduce((acc, t) => acc + (t - m) ** 2, 0) / (n - 1));
+    }
+  };
+
+  /* ------------------------------------------------------------------ *
+   * Sound effects: synthesized with the Web Audio API (no audio files).
+   * Sounds only ever play AFTER a timestamp is taken, and there is
+   * deliberately no sound on the green signal, so this stays a pure
+   * visual reaction test.
+   * ------------------------------------------------------------------ */
+  const sound = {
+    ctx: null,
+    master: null,
+    enabled: true,
+    supported: Boolean(window.AudioContext || window.webkitAudioContext),
+
+    // Browsers only allow audio after a user gesture, so this runs on the first one.
+    unlock() {
+      if (!this.supported) return;
+      try {
+        if (!this.ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AC();
+          const comp = this.ctx.createDynamicsCompressor();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = 0.55;
+          this.master.connect(comp);
+          comp.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+      } catch (err) {
+        console.warn('[Reflex] Audio unavailable:', err);
+        this.supported = false;
+      }
+    },
+
+    tone(freq, { type = 'sine', at = 0, dur = 0.15, vol = 0.25, slideTo = null, lowpass = null } = {}) {
+      const ctx = this.ctx;
+      const t = ctx.currentTime + 0.005 + at;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      let node = osc;
+      let filter = null;
+      if (lowpass) {
+        filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = lowpass;
+        osc.connect(filter);
+        node = filter;
+      }
+      node.connect(gain);
+      gain.connect(this.master);
+      osc.start(t);
+      osc.stop(t + dur + 0.03);
+      // Release every node once finished so nothing accumulates
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); if (filter) filter.disconnect(); };
+    },
+
+    play(name, arg) {
+      if (!this.enabled || !this.ctx || this.ctx.state === 'closed') return;
+      try {
+        switch (name) {
+          case 'start':
+            this.tone(392, { type: 'triangle', dur: 0.1, vol: 0.14 });
+            this.tone(523, { type: 'triangle', at: 0.07, dur: 0.12, vol: 0.14 });
+            break;
+          case 'result': {
+            const ms = arg || 300;
+            const notes = ms < 220 ? [784, 1175] : ms < 310 ? [659, 988] : [523, 784];
+            this.tone(notes[0], { dur: 0.3, vol: 0.22 });
+            this.tone(notes[1], { at: 0.08, dur: 0.45, vol: 0.2 });
+            this.tone(notes[1] * 2, { type: 'triangle', at: 0.08, dur: 0.25, vol: 0.04 });
+            break;
+          }
+          case 'best':
+            [1047, 1319, 1568, 2093].forEach((f, i) => this.tone(f, { at: i * 0.075, dur: 0.32, vol: 0.16 }));
+            this.tone(2093, { type: 'triangle', at: 0.3, dur: 0.6, vol: 0.05 });
+            break;
+          case 'false':
+            this.tone(196, { type: 'sawtooth', dur: 0.3, vol: 0.16, slideTo: 98, lowpass: 1100 });
+            this.tone(207, { type: 'square', dur: 0.22, vol: 0.05, lowpass: 700 });
+            break;
+          case 'miss':
+            this.tone(440, { type: 'triangle', dur: 0.45, vol: 0.16, slideTo: 196 });
+            break;
+          case 'stop':
+            this.tone(330, { type: 'triangle', dur: 0.12, vol: 0.12, slideTo: 247 });
+            break;
+          case 'reset':
+            this.tone(660, { dur: 0.14, vol: 0.12, slideTo: 330 });
+            this.tone(330, { at: 0.1, dur: 0.12, vol: 0.08 });
+            break;
+          case 'toggle':
+            this.tone(880, { dur: 0.08, vol: 0.12 });
+            break;
+          default:
+            break;
+        }
+      } catch (err) {
+        console.warn('[Reflex] Sound failed:', err);
+      }
+    },
+
+    setEnabled(on) {
+      this.enabled = on;
+      dom.soundBtn.setAttribute('aria-pressed', String(on));
+      dom.soundBtn.title = on ? 'Sound on (M)' : 'Sound off (M)';
+      if (on) { this.unlock(); this.play('toggle'); }
+    },
+
+    close() {
+      if (this.ctx && this.ctx.state !== 'closed') this.ctx.close().catch(() => {});
+      this.ctx = null;
     }
   };
 
@@ -801,7 +962,7 @@
     requestAnimationFrame(() => { dom.live.textContent = message; });
   }
 
-  function renderOverlay(state, ctx) {
+  function renderOverlay(state, ctx, animate = true) {
     let kicker = '';
     let headline = '';
     let headlineUnit = '';
@@ -811,12 +972,12 @@
       case State.IDLE:
         kicker = ctx.notice || 'Reaction test';
         headline = 'Test your reflexes';
-        sub = 'Click or tap anywhere in this box to start, then react the moment the shape turns green.';
+        sub = hint.start();
         break;
       case State.WAITING:
         kicker = 'Get ready';
         headline = 'Wait for green\u2026';
-        sub = 'Reacting now counts as a false start.';
+        sub = isDesktop() ? 'Press Space or click the moment it turns green.' : 'Tap the moment it turns green.';
         break;
       case State.READY:
         headline = 'React!';
@@ -825,13 +986,13 @@
         kicker = rate(ctx.ms);
         headline = String(ctx.ms);
         headlineUnit = 'ms';
-        if (ctx.first) sub = 'First attempt logged. Click the box or press Space to go again.';
-        else if (ctx.isBest) sub = 'New personal best. Click the box or press Space to go again.';
+        if (ctx.first) sub = `First attempt logged. ${hint.again()}`;
+        else if (ctx.isBest) sub = `New personal best. ${hint.again()}`;
         else {
           const diff = Math.round(ctx.ms - ctx.prevAvg);
           sub = diff === 0
-            ? 'Right on your average. Click the box or press Space to go again.'
-            : `${Math.abs(diff)} ms ${diff < 0 ? 'faster' : 'slower'} than your average. Click the box or press Space to go again.`;
+            ? `Right on your average. ${hint.again()}`
+            : `${Math.abs(diff)} ms ${diff < 0 ? 'faster' : 'slower'} than your average. ${hint.again()}`;
         }
         break;
       }
@@ -839,15 +1000,15 @@
         if (ctx.reason === 'timeout') {
           kicker = 'Missed';
           headline = 'Too slow';
-          sub = `No reaction within ${CONFIG.TIMEOUT_MS / 1000} seconds, so this round isn't recorded. Click the box to try again.`;
+          sub = `No reaction within ${CONFIG.TIMEOUT_MS / 1000} seconds, so this round isn't recorded. ${hint.retry()}`;
         } else if (ctx.reason === 'anticipation') {
           kicker = 'False start';
           headline = 'Too soon!';
-          sub = `${Math.max(0, Math.round(ctx.ms))} ms is faster than human reaction allows, so it counts as a guess. Click the box to try again.`;
+          sub = `${Math.max(0, Math.round(ctx.ms))} ms is faster than human reaction allows, so it counts as a guess. ${hint.retry()}`;
         } else {
           kicker = 'False start';
           headline = 'Too soon!';
-          sub = 'You reacted before the shape turned green. Click the box to try again.';
+          sub = `You reacted before the shape turned green. ${hint.retry()}`;
         }
         break;
       default:
@@ -860,7 +1021,7 @@
 
     // Transition cue for every state except the stimulus, which must be instant
     dom.overlay.classList.remove('pop');
-    if (state !== State.READY && !prefersReducedMotion()) {
+    if (animate && state !== State.READY && !prefersReducedMotion()) {
       void dom.overlay.offsetWidth;
       dom.overlay.classList.add('pop');
     }
@@ -881,6 +1042,7 @@
 
   function setState(next, ctx = {}) {
     game.state = next;
+    game.ctx = ctx;
     dom.body.dataset.state = next;
     renderOverlay(next, ctx);
     renderControls(next);
@@ -902,6 +1064,7 @@
   function startRound() {
     clearTimers();
     setState(State.WAITING);
+    sound.play('start');
     const delay = randomBetween(CONFIG.MIN_DELAY_MS, CONFIG.MAX_DELAY_MS);
     game.delayTimer = setTimeout(() => {
       game.delayTimer = null;
@@ -916,6 +1079,7 @@
     clearTimers();
     game.lastEndAt = performance.now();
     setState(State.IDLE, { notice: notice || 'Round stopped' });
+    if (!document.hidden) sound.play('stop');
   }
 
   function falseStart(reason, ms) {
@@ -923,6 +1087,7 @@
     if (reason !== 'timeout') stats.falseStarts += 1;
     game.lastEndAt = performance.now();
     setState(State.FALSE_START, { reason, ms });
+    sound.play(reason === 'timeout' ? 'miss' : 'false');
     renderStats({ changed: reason !== 'timeout' ? 'false' : null });
   }
 
@@ -935,6 +1100,7 @@
     game.lastEndAt = performance.now();
     const isBest = prevBest !== null && ms < prevBest;
     setState(State.RESULT, { ms, isBest, prevAvg, first: prevBest === null });
+    sound.play(isBest ? 'best' : 'result', ms);
     renderStats({ changed: 'result', isBest: isBest || prevBest === null });
   }
 
@@ -971,6 +1137,7 @@
     stats.reset();
     game.lastEndAt = 0;
     setState(State.IDLE, { notice: 'Session reset' });
+    sound.play('reset');
     renderStats({});
   }
 
@@ -1089,6 +1256,9 @@
     if (typeof e.button === 'number' && e.button !== 0) return;
     if (e.cancelable) e.preventDefault();
     lastStageInputAt = performance.now();
+    if (document.activeElement !== dom.stage) {
+      try { window.focus(); dom.stage.focus({ preventScroll: true }); } catch (_) { /* focus is best-effort */ }
+    }
     handleAction(eventTime(e));
   }
   if (window.PointerEvent) {
@@ -1112,18 +1282,40 @@
   });
   dom.stage.addEventListener('pointerleave', () => { if (visuals && visuals.ok) visuals.setParallax(0, 0); });
 
+  // Capture phase so audio is ready before the gesture's own handler runs
+  ['pointerdown', 'touchend', 'keydown', 'click'].forEach((type) => {
+    document.addEventListener(type, () => sound.unlock(), { capture: true, passive: true });
+  });
+
+  dom.soundBtn.addEventListener('click', () => sound.setEnabled(!sound.enabled));
+  if (!sound.supported) {
+    dom.soundBtn.disabled = true;
+    dom.soundBtn.setAttribute('aria-pressed', 'false');
+    dom.soundBtn.title = 'Sound is not supported in this browser';
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { stopRound(); return; }
-    const isReactKey = e.code === 'Space' || e.key === ' ' || e.key === 'Enter';
-    if (!isReactKey || e.altKey || e.ctrlKey || e.metaKey) return;
-    if (isOtherControl(e.target)) return; // let other buttons behave natively
+    if ((e.key === 'm' || e.key === 'M') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !(e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]'))) {
+      if (sound.supported) sound.setEnabled(!sound.enabled);
+      return;
+    }
+    const isSpace = e.code === 'Space' || e.key === ' ';
+    const isEnter = e.key === 'Enter';
+    if ((!isSpace && !isEnter) || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    // Space is always the reaction key, even if a button has focus.
+    // Enter keeps its normal meaning on other buttons (e.g. Reset).
+    if (isEnter && isOtherControl(e.target)) return;
     e.preventDefault();
     if (e.repeat) return; // holding the key is not a reaction
     game.lastKeyAt = performance.now();
     handleAction(eventTime(e));
   });
   document.addEventListener('keyup', (e) => {
-    if ((e.code === 'Space' || e.key === ' ') && e.target === dom.primaryBtn) e.preventDefault();
+    // Stop a focused button from also firing its own click on Space release
+    if ((e.code === 'Space' || e.key === ' ') && e.target && e.target.closest && e.target.closest('button')) e.preventDefault();
   });
 
   dom.primaryBtn.addEventListener('click', (e) => {
@@ -1133,7 +1325,10 @@
     else startRound();
   });
 
-  dom.resetBtn.addEventListener('click', resetSession);
+  dom.resetBtn.addEventListener('click', (e) => {
+    if (e.detail === 0 && performance.now() - game.lastKeyAt < 800) return; // Space never resets
+    resetSession();
+  });
 
   // A hidden tab pauses rendering, so any round in progress is invalid.
   document.addEventListener('visibilitychange', () => {
@@ -1176,8 +1371,21 @@
     }
     resizeStage();
 
+    applyDeviceClass();
+    if (desktopQuery) {
+      const onDeviceChange = () => {
+        applyDeviceClass();
+        // Refresh the wording in place; the go signal is never re-rendered mid-round
+        if (game.state !== State.READY) renderOverlay(game.state, game.ctx || {}, false);
+      };
+      if (desktopQuery.addEventListener) desktopQuery.addEventListener('change', onDeviceChange);
+      else if (desktopQuery.addListener) desktopQuery.addListener(onDeviceChange);
+    }
     setState(State.IDLE);
     renderStats({});
+    if (isDesktop()) {
+      try { dom.stage.focus({ preventScroll: true }); } catch (_) { /* focus is best-effort */ }
+    }
     rafId = requestAnimationFrame(frame);
   }
 
@@ -1186,6 +1394,7 @@
     cancelAnimationFrame(rafId);
     if (resizeObserver) resizeObserver.disconnect();
     if (visuals) { visuals.dispose(); visuals = null; }
+    sound.close();
   }
 
   window.addEventListener('pagehide', (e) => { if (!e.persisted) teardown(); });
